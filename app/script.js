@@ -1006,8 +1006,6 @@ function fixedPurchaseOrderSegments(records) {
     return value;
   }
 
-<<<<<<< HEAD
-=======
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -1069,15 +1067,12 @@ function fixedPurchaseOrderSegments(records) {
     }
   }
 
->>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
   try {
     const [batches, productById] = await Promise.all([
       fetchReportCached(REPORTS.batches),
       getProductById()
     ]);
 
-<<<<<<< HEAD
-=======
     // Total Batches = All_Batch_Details count, independent of category or
     // whether the Product_Master join below resolves.
     totalBatches = batches.filter(isValidBatchNumber).length;
@@ -1086,7 +1081,6 @@ function fixedPurchaseOrderSegments(records) {
     // belonging to the report row rather than Product_Master.ID. Build a
     // display-name index from the already-cached Product Master records as a
     // safe relationship fallback; no additional report call is needed.
->>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
     const productByName = new Map();
     productById.forEach(product => {
       const name = String(product.name || "").trim();
@@ -1109,15 +1103,8 @@ function fixedPurchaseOrderSegments(records) {
     let rowsMissingProductLookup = 0;
 
     batches.forEach(batch => {
-<<<<<<< HEAD
-      const batchNumber = displayValue(batch[BATCH_FIELDS.number]);
-      if (batchNumber === undefined || batchNumber === null || String(batchNumber).trim() === "") return;
-
-      batchHealth.total++;
-=======
       if (!isValidBatchNumber(batch)) return;
       validBatchCount++;
->>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
 
       const product = resolveProduct(batch);
       if (!product) {
@@ -1131,8 +1118,6 @@ function fixedPurchaseOrderSegments(records) {
       if (status) batchHealth[status]++;
     });
 
-<<<<<<< HEAD
-=======
     // Fallback: the join above resolved nothing at all. Re-fetch each
     // relevant product's own record by ID, which returns its Batch_Details
     // subform directly regardless of the report-level field limitation.
@@ -1167,7 +1152,6 @@ function fixedPurchaseOrderSegments(records) {
     // usedGetRecordByIdFallback is false, ZOHO.CREATOR.API.getRecordById
     // isn't available in this widget SDK version — that method name/shape
     // needs to be re-checked against Zoho's current widget JS API docs.
->>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
     console.info("Batch Health loaded", {
       batchRows: batches.length,
       totalBatches,

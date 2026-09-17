@@ -138,11 +138,7 @@ const PURCHASE_ORDER_STATUS_COLORS = {
 };
 const FALLBACK_PALETTE = ["#10B981", "#E5A93C", "#6366F1", "#0D9488", "#F97316", "#F43F5E", "#15803D", "#64748B"];
 
-// Resolves a status string to a color, preferring the known maps above (so
-// the SAME status always renders the SAME color everywhere on the dashboard)
-// and falling back to a cycled palette for anything unexpected in the data —
-// this is what lets every status-driven donut work off whatever values are
-// actually present instead of a hardcoded list.
+// Resolves a status string to a color, preferring the known maps above
 function colorForStatus(status, seenOrder) {
   const key = String(status || "").trim().toLowerCase();
   if (PRODUCTION_STATUS_COLORS[key]) return PRODUCTION_STATUS_COLORS[key];
@@ -151,9 +147,6 @@ function colorForStatus(status, seenOrder) {
   return FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
 }
 
-// Groups any array of records by a status-like field and returns donut
-// segments in {key,label,color,count} shape, discovering whatever distinct
-// values actually exist in the data rather than assuming a fixed list.
 function segmentsByStatus(records, statusOf) {
   const counts = new Map();
   records.forEach(r => {
@@ -167,9 +160,6 @@ function segmentsByStatus(records, statusOf) {
   }));
 }
 
-// Production Order Status always keeps its five operational states visible.
-// Any non-standard live status is retained as an additional segment so real
-// data is never silently excluded from the total.
 function fixedProductionStatusSegments(records) {
   const counts = new Map(DEFAULT_PRODUCTION_STATUSES.map(status => [status, 0]));
   records.forEach(record => {
@@ -188,18 +178,6 @@ function fixedProductionStatusSegments(records) {
 
 ///////////////////////// shared/cached fetchers (perf: one call per report) /////////////////////////
 
-// ---- SDK readiness gate + resilient fetch wrapper ----
-// Every section below fires its first getRecords() call as soon as its IIFE
-// runs at script load — but ZOHO.CREATOR.DATA.getRecords() isn't reliable
-// until ZOHO.CREATOR.init() has resolved, and nothing here was waiting for
-// that handshake. That's a race: sometimes init happens to finish first
-// (data loads fine), sometimes a getRecords call fires before it (that
-// call fails, its .catch turned the failure into a *permanently cached*
-// empty array, so the panel stays blank for the rest of that page load).
-// That's exactly the "reload → some data missing → reload again → fine →
-// reload again → missing" pattern. Fix: (1) every fetch now waits on a
-// single init promise first, and (2) failures retry a couple of times with
-// backoff instead of being cached as empty on the first hiccup.
 window.__zohoReady = (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && typeof ZOHO.CREATOR.init === 'function')
   ? ZOHO.CREATOR.init().catch(err => { console.error('ZOHO.CREATOR.init() failed:', err); })
   : Promise.resolve();
@@ -221,12 +199,6 @@ async function zohoGetRecords(reportName, attempt = 1) {
   }
 }
 
-// Product_Master_Report is read by several sections (Products panel, Stock
-// Status, Stock Distribution, Warehouse Stock). Cache the single
-// in-flight/resolved fetch so switching between panels never re-requests it,
-// and expose a productById map so every other section can resolve a
-// Product_Master lookup to {name, category, reorderPoint, ...} with zero
-// extra API calls (this replaces the previous per-product N+1 fetch loop).
 function getProductMaster() {
   if (!window.__productMasterPromise) {
     window.__productMasterPromise = zohoGetRecords(REPORTS.products);
@@ -252,8 +224,6 @@ function getProductById() {
   return window.__productByIdPromise;
 }
 
-// Generic "fetch a report once, cache the promise" helper for the reports
-// that don't need their own dedicated wrapper.
 const __reportCache = {};
 function fetchReportCached(reportName) {
   if (!__reportCache[reportName]) {
@@ -262,16 +232,6 @@ function fetchReportCached(reportName) {
   return __reportCache[reportName];
 }
 
-// Production_Target_Report, normalized once and shared by every section that
-// needs it (Production Target table, Production Order Status donut,
-// Production_Target_Report, normalized once and shared by every section that
-// needs it (Production Target table, Production Order Status donut,
-// Production Output chart, Production Count in the Warehouse Stock table) —
-// avoids re-fetching or re-parsing the same reports four separate times.
-// Product / Target Quantity live on the separate Finished_Goods_Report, so
-// both reports are fetched together and joined via
-// Finished_Goods.Production_Target_ID -> Production_Targets.ID.
-// Each normalized record: { id, targetId, startDate, endDate, status, items:[{productId,productName,targetQty}] }
 function getProductionTargets() {
   if (!window.__productionTargetsPromise) {
     window.__productionTargetsPromise = (async () => {
@@ -281,10 +241,6 @@ function getProductionTargets() {
         getProductById()
       ]);
 
-      // Group Finished_Goods_Report rows by the production target they
-      // belong to (Finished_Goods.Production_Target_ID is a lookup to the
-      // Production_Targets record, so its resolved .ID matches
-      // Production_Target_Report's own built-in ID).
       const goodsByTargetId = new Map();
       goodsRows.forEach(g => {
         const targetLookup = g[FINISHED_GOODS_FIELDS.productionTargetLookup];
@@ -323,8 +279,6 @@ function getProductionTargets() {
 }
 
 ///////////////////////////////// small helpers //////////////////////////////////
-// Zoho lookup fields often come back as an object ({ID, display_value, ...})
-// rather than a plain string — this unwraps either shape safely.
 function displayValue(v) {
   if (v && typeof v === "object") {
     return v.zc_display_value || v.display_value || v.ID || "";
@@ -332,9 +286,6 @@ function displayValue(v) {
   return v;
 }
 
-// Zoho Creator typically sends dates as "DD-MMM-YYYY" (e.g. "29-Jul-2026"),
-// which not all browsers parse reliably via `new Date()`, so this handles
-// that format explicitly and falls back to native parsing otherwise.
 function parseZohoDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -348,19 +299,51 @@ function parseZohoDate(value) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// -------------------------------------------------------------
+// NEW: UPDATED BATCH HEALTH LOGIC 
+// -------------------------------------------------------------
+function getBatchHealthStatus(batch, productCategory, currentDate = new Date(), expirySoonDays = 2) {
+  const category = String(displayValue(productCategory) || "").trim();
+  
+  const today = new Date(currentDate);
+  if (isNaN(today.getTime())) return null;
+  today.setHours(0, 0, 0, 0);
+
+  const expiryDate = parseZohoDate(batch[BATCH_FIELDS.expiryDate]);
+  if (!expiryDate) return null;
+  expiryDate.setHours(0, 0, 0, 0);
+
+  const expirySoonCutoff = new Date(today);
+  expirySoonCutoff.setDate(today.getDate() + expirySoonDays);
+
+  if (category === "Finished Goods") {
+    const manufacturingDate = parseZohoDate(batch[BATCH_FIELDS.manufacturingDate]);
+    if (!manufacturingDate) return null;
+    manufacturingDate.setHours(0, 0, 0, 0);
+
+    if (today > expiryDate) return "expired";
+    if (expiryDate <= expirySoonCutoff) return "expirySoon";
+    if (today >= manufacturingDate && today <= expiryDate) return "healthy";
+    
+    return null; // Date is before manufacturing date
+  } 
+  else if (category === "Raw Materials") {
+    if (today > expiryDate) return "expired";
+    if (expiryDate <= expirySoonCutoff) return "expirySoon";
+    return "healthy"; 
+  }
+  
+  return null; // Fallback for unrecognized categories
+}
+
 function formatShortDate(d) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-// Safe DOM text setter — several stat-card ids referenced below (e.g. "planned",
-// "released") don't exist in every layout. Without this guard, a missing
-// element throws and silently kills the rest of the calling function.
 function setText(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
-  // Numeric values get an eased count-up for a more premium feel; anything
-  // else (badge strings like "3 low stock") is set instantly as before.
   if (typeof value === 'number' && isFinite(value)) {
     animateCount(el, value);
   } else {
@@ -368,9 +351,6 @@ function setText(id, value) {
   }
 }
 
-// Eases an element's displayed number from whatever it currently shows up
-// to `target`. Shared by setText and every chart/donut total below so every
-// stat on the dashboard counts up the same way.
 function animateCount(el, target, duration = 750) {
   if (!el) return;
   const start = parseFloat(String(el.textContent).replace(/[^0-9.-]/g, '')) || 0;
@@ -457,7 +437,6 @@ window.animateCount = animateCount;
     svg.innerHTML = '';
     if (!data.length) return;
 
-    // Gradient definition for emerald bars
     const defs = el('defs');
     const grad = el('linearGradient', { id: 'pcpBarGrad', x1: '0', y1: '0', x2: '0', y2: '1' });
     const stop1 = el('stop', { offset: '0%', 'stop-color': '#10b981' });
@@ -563,12 +542,10 @@ window.animateCount = animateCount;
       const wk = Math.min(4, Math.floor((r.date.getDate() - 1) / 7));
       weeks[wk]++;
     });
-    // drop the trailing 5th week bucket if nothing landed in it (most months don't need it)
     const trimmed = weeks[4] === 0 ? weeks.slice(0, 4) : weeks;
     return trimmed.map((v, i) => ({ label: `W${i + 1}`, value: v }));
   }
 
-  // records set once production data has loaded; pill clicks re-slice it.
   window.__productionRecords = [];
 
   document.querySelectorAll('#productionTargetPills .pcp-pill').forEach(p => {
@@ -655,9 +632,6 @@ window.animateCount = animateCount;
           `<div class="po-chip-body"><span class="po-chip-label">${seg.label}</span>` +
           `<span class="po-chip-pct">${pct}% of total</span></div>` +
           `<span class="po-chip-count">${seg.count}</span>`;
-        // Hovering a legend row highlights its matching donut slice and
-        // fades the rest, so the connection between legend and chart reads
-        // instantly instead of requiring the eye to match colors.
         item.addEventListener('mouseenter', () => {
           svg.querySelectorAll('circle').forEach(c => {
             c.classList.toggle('seg-highlight', c.dataset.key === seg.key);
@@ -733,7 +707,6 @@ window.animateCount = animateCount;
           `<span class="product-row-cat">${p.category}</span>` +
         `</div>` +
         `<div class="product-row-stock">` +
-          // `<span class="product-row-qty">${p.stock.toLocaleString()} units</span>` +
           `<span class="product-row-status ${low ? 'low' : 'ok'}">${low ? 'Low stock' : 'In stock'}</span>` +
         `</div>`;
       list.appendChild(row);
@@ -772,11 +745,6 @@ window.animateCount = animateCount;
 
   window.refreshFromProducts = refreshFromProducts;
 
-  // -------- live Zoho fetch: Product_Master_Report + Main_Warehouse_Stock_Details_Report, joined in JS --------
-  // (previously issued one filtered getRecords() call per product — that's
-  // an N+1 API-call pattern the "avoid unnecessary duplicate API calls"
-  // requirement specifically rules out; both reports are now fetched once
-  // total and joined client-side via Product_Master.ID.)
   async function fetchAllProducts() {
     try {
       const [records, stockRows] = await Promise.all([
@@ -797,8 +765,6 @@ window.animateCount = animateCount;
         sku: record[PRODUCT_FIELDS.id],
         name: displayValue(record[PRODUCT_FIELDS.name]),
         category: record[PRODUCT_FIELDS.category],
-        // Stock On Hand from Main_Warehouse_Stock_Details, per the spec's
-        // low-stock rule (Reorder_Point vs. actual Stock_On_Hand).
         stock: stockByProductId.get(String(record[PRODUCT_FIELDS.id])) || 0,
         reorder: Number(record[PRODUCT_FIELDS.reorderPoint] || 0)
       }));
@@ -816,8 +782,6 @@ window.animateCount = animateCount;
 
 ////////////////////////// production target report: chart + status donut + tables //////////////////////////
 (function () {
-  // The five operational status labels remain visible even when their current
-  // count is zero; the data still supplies every count dynamically.
   function renderStatusDonut(targetLevelRecords) {
     const segments = fixedProductionStatusSegments(targetLevelRecords);
     const totalEl = document.getElementById('totalpt');
@@ -826,7 +790,6 @@ window.animateCount = animateCount;
       size: 200, r: 78, strokeW: 30, segments
     });
 
-    // Optional stat-card ids some layouts include — setText no-ops if absent.
     const countOf = status => segments.find(s => s.key.toLowerCase() === status.toLowerCase())?.count || 0;
     setText('planned', countOf('Planned'));
     setText('released', countOf('Released'));
@@ -837,9 +800,6 @@ window.animateCount = animateCount;
     setText('ctarget', countOf('Completed'));
   }
 
-  // Renders a Status cell as a colored pill (using the same status->color
-  // map as the donuts) instead of plain right-aligned text, so it lines up
-  // cleanly next to the Target Quantity column regardless of label length.
   function statusPillHtml(status) {
     const label = status || 'Unspecified';
     const color = colorForStatus(label, [label]);
@@ -858,7 +818,6 @@ window.animateCount = animateCount;
   }
 
   function renderProductionTargetTable(itemLevelRecords) {
-    // The real markup id is #ptbody.
     const tbody = document.getElementById('ptbody');
     if (!tbody) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -874,13 +833,9 @@ window.animateCount = animateCount;
       tbody.innerHTML = upcoming.map(productionTargetRowHtml).join('');
     }
 
-    // Keep the full record set around so the "View all" button can show
-    // every Production Target row (not just the next 5 upcoming ones).
     window.__productionTargetItemLevel = itemLevelRecords;
   }
 
-  // "View all" opens a modal listing every Production Target item-level
-  // record, sorted newest-first, instead of only the 5 upcoming rows.
   const ptViewAllBtn = document.getElementById('ptViewAllBtn');
   if (ptViewAllBtn) {
     ptViewAllBtn.addEventListener('click', () => {
@@ -900,27 +855,19 @@ window.animateCount = animateCount;
   }
 
   (async function initProduction() {
-    // Production_Targets → Finished_Good subform → Finished_Goods.Item →
-    // Product_Master, already normalized by the shared getProductionTargets().
     const targets = await getProductionTargets();
 
-    // Target-level rows (one per Production_Targets record, quantities
-    // summed across its Finished_Good subform) — what the order-count bar
-    // chart, status donut, and Production Output all consume.
     const targetLevel = targets.map(t => ({
       date: t.startDate,
       target: t.items.reduce((sum, item) => sum + item.targetQty, 0),
       status: t.status
     }));
 
-    // Item-level rows (one per Finished_Goods subform row) — what the
-    // Production Target table displays, since a single target can cover
-    // several products.
     const itemLevel = [];
     targets.forEach(t => {
       const rows = t.items.length ? t.items : [{ productName: null, targetQty: 0 }];
       rows.forEach(item => {
-        if (!item.productName) return; // no finished-good row on this target — skip rather than show a blank line
+        if (!item.productName) return; 
         itemLevel.push({ date: t.startDate, product: item.productName, target: item.targetQty, status: t.status });
       });
     });
@@ -933,12 +880,8 @@ window.animateCount = animateCount;
   })();
 })();
 
-////////////////////////// top production products: Consumption_Entry_Report //////////////////////////
-////////////////////////// top production products: Finished_Goods_Cunsumptions_Report //////////////////////////
+////////////////////////// top production products //////////////////////////
 (function () {
-  // Finished_Goods_Cunsumptions_Report is the subform's OWN report — one row
-  // per finished good consumed. "Times Produced" = number of rows per
-  // product, i.e. how many times that finished good shows up as consumed.
   async function fetchProductCounts() {
     try {
       const [rows, productById] = await Promise.all([
@@ -948,7 +891,7 @@ window.animateCount = animateCount;
 
       const counts = {};
       rows.forEach(row => {
-        const lookup = row[FINISHED_GOODS_CONSUMPTIONS_FIELDS.product]; // "Finished_Good"
+        const lookup = row[FINISHED_GOODS_CONSUMPTIONS_FIELDS.product]; 
         const id = (lookup && typeof lookup === "object") ? String(lookup.ID) : null;
         const name = (id && productById.has(id)) ? productById.get(id).name : (displayValue(lookup) || null);
         if (!name) return;
@@ -975,8 +918,6 @@ window.animateCount = animateCount;
     if (!tbody) return;
 
     const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    // Keep the full ranked list for the "View all" modal; only the top 5
-    // are shown in the compact panel table.
     window.__topProductsRanked = ranked;
 
     if (!ranked.length) {
@@ -1006,12 +947,8 @@ window.animateCount = animateCount;
     renderTopProductsTable(counts);
   })();
 })();
-////////////////////////// purchase orders: donut + pending-PO stat (one fetch, shared) //////////////////////////
-// Unlike the other status donuts, Purchase Order Status always shows all 3
-// known statuses (Not Received / Partially Received / Received) on load,
-// even ones with zero POs right now — otherwise a data set that happens to
-// be all-Received (or all-Not-Received) renders as a single-label donut,
-// which is what the user was seeing.
+
+////////////////////////// purchase orders //////////////////////////
 function fixedPurchaseOrderSegments(records) {
   const knownOrder = ["Not Received", "Partially Received", "Received"];
   const counts = new Map(knownOrder.map(status => [status, 0]));
@@ -1030,7 +967,6 @@ function fixedPurchaseOrderSegments(records) {
   try {
     const records = await fetchReportCached(REPORTS.purchaseOrders);
 
-    // "Pending" POs = Not Received, matching the existing stat-card semantics.
     const pendingCount = records.filter(r => r[PURCHASE_ORDER_FIELDS.status] === "Not Received").length;
     setText('pendingpo', pendingCount);
 
@@ -1049,72 +985,14 @@ function fixedPurchaseOrderSegments(records) {
   }
 })();
 
-////////////////////////// batch health cards — live batch/report data //////////////////////////
-// Primary path: batches from All_Batch_Details joined to Product_Master via
-// BATCH_FIELDS.productLookup. If that join resolves nothing at all — even
-// after Product_Master was added to the report's field configuration in
-// Zoho Creator — that points to a known Zoho Creator limitation where a
-// bidirectional relation field doesn't come back through bulk getRecords()
-// regardless of report config. The fallback below re-fetches each relevant
-// product's own record by ID instead: that call returns the full record
-// detail, including its embedded Batch_Details subform, the same data the
-// record's detail-view popup already shows.
+////////////////////////// batch health cards //////////////////////////
 (async function initBatchHealth() {
   const batchHealth = { total: 0, healthy: 0, expirySoon: 0, expired: 0 };
 
-  // Creator lookup values may be returned as a lookup object or as a
-  // one-item lookup array, depending on the report configuration.
   function lookupId(value) {
     if (Array.isArray(value)) return value.length ? lookupId(value[0]) : null;
     if (value && typeof value === "object") return value.ID || value.id || null;
     return value;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expirySoonCutoff = new Date(today);
-  expirySoonCutoff.setDate(expirySoonCutoff.getDate() + 2);
-
-  // Classifies one Batch_Details row into batchHealth given its product's
-  // category. Shared by the primary join path and the getRecordById
-  // fallback so the two can never compute different results for the same row.
-  function classifyBatch(batch, category) {
-    const batchNumber = displayValue(batch[BATCH_FIELDS.number]);
-    if (batchNumber === undefined || batchNumber === null || String(batchNumber).trim() === "") return;
-    // Total Batches = every valid Batch_Number, independent of category —
-    // the health buckets below are the only thing gated to Finished
-    // Goods / Raw Materials.
-    batchHealth.total++;
-
-    const expiryDate = parseZohoDate(batch[BATCH_FIELDS.expiryDate]);
-    if (!expiryDate) return; // Missing expiry dates are intentionally unclassified.
-    expiryDate.setHours(0, 0, 0, 0);
-
-    if (category === "Finished Goods") {
-      // Finished Goods: Manufacturing_Date -> Expiry_Date.
-      if (expiryDate < today) {
-        batchHealth.expired++;
-      } else if (expiryDate > today && expiryDate <= expirySoonCutoff) {
-        batchHealth.expirySoon++;
-      } else {
-        // Must have begun manufacturing before it can be healthy.
-        const manufacturingDate = parseZohoDate(batch[BATCH_FIELDS.manufacturingDate]);
-        if (manufacturingDate) {
-          manufacturingDate.setHours(0, 0, 0, 0);
-          if (manufacturingDate <= today && today <= expiryDate) batchHealth.healthy++;
-        }
-      }
-    } else if (category === "Raw Materials") {
-      // Raw Materials: zoho.currentdate -> Expiry_Date. Manufacturing_Date
-      // is never used for this category.
-      if (expiryDate < today) {
-        batchHealth.expired++;
-      } else if (expiryDate > today && expiryDate <= expirySoonCutoff) {
-        batchHealth.expirySoon++;
-      } else if (expiryDate > expirySoonCutoff) {
-        batchHealth.healthy++;
-      }
-    }
   }
 
   try {
@@ -1123,10 +1001,6 @@ function fixedPurchaseOrderSegments(records) {
       getProductById()
     ]);
 
-    // Some Creator report layouts expose the lookup's display value but an ID
-    // belonging to the report row rather than Product_Master.ID. Build a
-    // display-name index from the already-cached Product Master records as a
-    // safe relationship fallback; no additional report call is needed.
     const productByName = new Map();
     productById.forEach(product => {
       const name = String(product.name || "").trim();
@@ -1144,63 +1018,32 @@ function fixedPurchaseOrderSegments(records) {
       return name ? (productByName.get(name) || null) : null;
     }
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     let rowsMissingProductLookup = 0;
-    let validBatchCount = 0;
 
     batches.forEach(batch => {
       const batchNumber = displayValue(batch[BATCH_FIELDS.number]);
       if (batchNumber === undefined || batchNumber === null || String(batchNumber).trim() === "") return;
-      validBatchCount++;
+
+      batchHealth.total++;
 
       const product = resolveProduct(batch);
       if (!product) {
         rowsMissingProductLookup++;
         return;
       }
-      classifyBatch(batch, String(displayValue(product.category) || "").trim());
+      const category = String(displayValue(product.category) || "").trim();
+      if (category !== "Finished Goods" && category !== "Raw Materials") return;
+
+      const status = getBatchHealthStatus(batch, category, today);
+      if (status) batchHealth[status]++;
     });
 
-    // Fallback: the join above resolved nothing at all. Re-fetch each
-    // relevant product's own record by ID, which returns its Batch_Details
-    // subform directly regardless of the report-level field limitation.
-    const joinFailed = validBatchCount > 0 && rowsMissingProductLookup === validBatchCount;
-    const canFetchById = typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.API
-      && typeof ZOHO.CREATOR.API.getRecordById === 'function';
-
-    if (joinFailed && canFetchById) {
-      batchHealth.total = 0; batchHealth.healthy = 0; batchHealth.expirySoon = 0; batchHealth.expired = 0;
-      const products = await getProductMaster();
-      for (const product of products) {
-        const category = String(displayValue(product[PRODUCT_FIELDS.category]) || "").trim();
-        if (category !== "Finished Goods" && category !== "Raw Materials") continue;
-        try {
-          const res = await ZOHO.CREATOR.API.getRecordById({
-            app_name: ZOHO_APP, report_name: REPORTS.products, id: product[PRODUCT_FIELDS.id], field_config: "all"
-          });
-          const record = (res && (res.data || res.record)) || res;
-          const rows = record ? record[PRODUCT_FIELDS.batchDetails] : null;
-          const batchRows = Array.isArray(rows) ? rows : (rows ? [rows] : []);
-          batchRows.forEach(batch => classifyBatch(batch, category));
-        } catch (error) {
-          console.error(`Error fetching Product_Master record ${product[PRODUCT_FIELDS.id]} by ID:`, error);
-        }
-        await __delay(150); // throttle — avoid 429 Too Many Requests across ~N sequential calls
-      }
-    }
-
-    // Kept in the browser console only, so an unavailable/unshared field is
-    // immediately distinguishable from a genuine zero-batch result. If
-    // rowsMissingProductLookup is still close to batchRows AND
-    // usedGetRecordByIdFallback is false, ZOHO.CREATOR.API.getRecordById
-    // isn't available in this widget SDK version — that method name/shape
-    // needs to be re-checked against Zoho's current widget JS API docs.
     console.info("Batch Health loaded", {
       batchRows: batches.length,
       productRows: productById.size,
       rowsMissingProductLookup,
-      joinFailed,
-      canFetchById,
-      usedGetRecordByIdFallback: joinFailed && canFetchById,
       sampleBatchKeys: batches.length ? Object.keys(batches[0]) : [],
       batchHealth
     });
@@ -1214,11 +1057,7 @@ function fixedPurchaseOrderSegments(records) {
   setText('batchExpired', batchHealth.expired);
 })();
 
-////////////////////////// stock distribution (warehouse) — live totals //////////////////////////
-// Main = sum of Stock on Hand (Main_Warehouse_Stock_Details_Report)
-// Production = sum of Committed Stock (Production_Stock_Details_Report)
-// Scrap = sum of Scrap Quantity (Scrap_Warehouse_Stock_Details_Report)
-// Percentages are each warehouse's share of the combined total.
+////////////////////////// stock distribution //////////////////////////
 (function () {
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.getElementById('whChart');
@@ -1304,7 +1143,7 @@ function fixedPurchaseOrderSegments(records) {
   })();
 })();
 
-////////////////////////// warehouse stock table (tab view) //////////////////////////
+////////////////////////// warehouse stock table //////////////////////////
 (function () {
   const head = document.getElementById('whTableHead');
   const body = document.getElementById('whTableBody');
@@ -1312,16 +1151,12 @@ function fixedPurchaseOrderSegments(records) {
   const tabs = document.getElementById('whTabs');
   if (!head || !body) return;
 
-  // Populated by init() below from the three live warehouse reports.
   let WAREHOUSES = {
     main: { label: 'Main Warehouse', subtitle: 'Main Warehouse stock levels', columns: ['Product', 'Warehouse Name', 'Stock on Hand', 'Committed Stock', 'Available Stock'], rows: [] },
     production: { label: 'Production Warehouse', subtitle: 'Production Warehouse committed stock', columns: ['Product', 'Warehouse Name', 'Committed Stock', 'Production Count'], rows: [] },
     scrap: { label: 'Scrap Warehouse', subtitle: 'Scrap Warehouse quantity', columns: ['Product', 'Warehouse Name', 'Product Category', 'Scrap Quantity'], rows: [] }
   };
 
-  // Resolves a warehouse-detail record's linked product (via Product_Master
-  // lookup) and its linked warehouse name (via the Warehouse lookup's own
-  // resolved display value — Warehouse_Master.Warehouse_Name).
   function resolveRow(record, productById) {
     const lookup = record[WAREHOUSE_DETAIL_FIELDS.productLookup];
     const id = (lookup && typeof lookup === 'object') ? String(lookup.ID) : null;
@@ -1343,20 +1178,16 @@ function fixedPurchaseOrderSegments(records) {
         getProductionTargets()
       ]);
 
-      // ---- Main Warehouse: Stock on Hand, Committed Stock, Available, % of total ----
       const mainRows = main.map(r => {
         const { name, warehouseName } = resolveRow(r, productById);
         const onHand = Number(r[WAREHOUSE_DETAIL_FIELDS.stockOnHand] || 0);
         const committed = Number(r[WAREHOUSE_DETAIL_FIELDS.committedStock] || 0);
-        // Prefer the stored Available_Stocks value when present (per spec);
-        // only compute Stock On Hand - Committed Stocks as a fallback.
         const stored = r[WAREHOUSE_DETAIL_FIELDS.availableStock];
         const available = (stored !== undefined && stored !== null && stored !== '') ? Number(stored) : (onHand - committed);
         return { name, warehouseName: warehouseName || 'Main Warehouse', onHand, committed, available };
       });
       WAREHOUSES.main.rows = mainRows.map(r => [r.name, r.warehouseName, r.onHand, r.committed, r.available]);
 
-      // ---- Production Warehouse: Committed Stock (own report) ----
       const productionCommitted = {};
       production.forEach(r => {
         const { name, warehouseName } = resolveRow(r, productById);
@@ -1364,10 +1195,6 @@ function fixedPurchaseOrderSegments(records) {
         productionCommitted[name].committed += Number(r[WAREHOUSE_DETAIL_FIELDS.committedStock] || 0);
       });
 
-      // ---- Production Count: NOT a stored field — per the spec, calculated
-      // from Production_Targets where Status == "In Progress", counting how
-      // many active targets reference each product via the Finished_Good ->
-      // Finished_Goods.Item -> Product_Master chain (shared/cached above).
       const productionCounts = {};
       targets.filter(t => t.status === 'In Progress').forEach(t => {
         t.items.forEach(item => {
@@ -1384,7 +1211,6 @@ function fixedPurchaseOrderSegments(records) {
         productionCounts[name] || 0
       ]);
 
-      // ---- Scrap Warehouse: Product Category + Scrap Quantity ----
       WAREHOUSES.scrap.rows = scrap.map(r => {
         const { name, category, warehouseName } = resolveRow(r, productById);
         return [name, warehouseName || 'Scrap Warehouse', category || 'Uncategorized', Number(r[WAREHOUSE_DETAIL_FIELDS.scrapQuantity] || 0)];
@@ -1394,13 +1220,7 @@ function fixedPurchaseOrderSegments(records) {
     }
   }
 
-  // Column-specific badge styling so the same number reads at a glance —
-  // e.g. a thin "Available Stock" is a warning colour without the reader
-  // having to compare it against the reorder point themselves.
   function metricBadge(colName, value, row) {
-    // Product Category is text ("Raw Materials" / "Finished Goods"), not a
-    // number — routing it through the numeric branch below was forcing it
-    // through Number(value)||0, which is why it always rendered as "0".
     if (colName === 'Product Category') {
       const text = value || 'Uncategorized';
       const tone = text === 'Raw Materials' ? 'wh-badge-warn' : (text === 'Finished Goods' ? 'wh-badge-good' : 'wh-badge-name');
@@ -1420,8 +1240,6 @@ function fixedPurchaseOrderSegments(records) {
     return `<span class="wh-badge wh-badge-${tone}">${num.toLocaleString()}</span>`;
   }
 
-  // How many rows the in-panel table shows; the "View all" modal shows the
-  // full set for the currently selected warehouse.
   const PANEL_ROW_LIMIT = 6;
   let currentKey = 'main';
 
@@ -1453,7 +1271,6 @@ function fixedPurchaseOrderSegments(records) {
 
     head.innerHTML = headRowHtml(wh);
 
-    // Only the last N records per warehouse are shown in the panel.
     const shown = wh.rows.slice(-PANEL_ROW_LIMIT);
     if (!shown.length) {
       body.innerHTML = `<tr class="wh-empty-row"><td colspan="${wh.columns.length}">No data available</td></tr>`;
@@ -1474,8 +1291,6 @@ function fixedPurchaseOrderSegments(records) {
     });
   }
 
-  // "View all" opens the shared modal with every record for the currently
-  // selected warehouse (same columns / badges as the panel table).
   const whViewAllBtn = document.getElementById('whViewAllBtn');
   if (whViewAllBtn) {
     whViewAllBtn.addEventListener('click', () => {
@@ -1499,7 +1314,7 @@ function fixedPurchaseOrderSegments(records) {
   })();
 })();
 
-////////////////////////// production output: month / year chart //////////////////////////
+////////////////////////// production output //////////////////////////
 (function () {
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.getElementById('prodMonthChart');
@@ -1512,8 +1327,6 @@ function fixedPurchaseOrderSegments(records) {
   const yearField = document.getElementById('prodOutputYear');
   if (!svg) return;
 
-  // Wider + taller canvas than the other bar charts on the dashboard — this
-  // panel stands alone as a full-width row, so it gets more room to breathe.
   const LEFT = 66, RIGHT = 870, TOP = 20, BOTTOM = 280;
 
   const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1591,7 +1404,6 @@ function fixedPurchaseOrderSegments(records) {
     svg.innerHTML = '';
     if (!data.length) return;
 
-    // Gradient definition for emerald bars
     const defs = el('defs');
     const grad = el('linearGradient', { id: 'prodMonthBarGrad', x1: '0', y1: '0', x2: '0', y2: '1' });
     const stop1 = el('stop', { offset: '0%', 'stop-color': '#10b981' });
@@ -1688,12 +1500,7 @@ function fixedPurchaseOrderSegments(records) {
   updateOutputPeriod('year');
 })();
 
-////////////////////////// scroll-reveal for every card/panel //////////////////////////
-// Every .panel / .pcp-panel / .batch-card fades + slides in the first time it
-// enters the viewport, staggered slightly within its own row so groups of
-// cards animate together instead of all popping in at once. The top
-// .stats-grid cards already have their own entrance animation tied to
-// #dashboard.show, so they're left alone here.
+////////////////////////// scroll-reveal //////////////////////////
 (function () {
   const targets = document.querySelectorAll('.panel, .pcp-panel, .batch-card');
   if (!targets.length) return;
@@ -1703,7 +1510,7 @@ function fixedPurchaseOrderSegments(records) {
     return;
   }
 
-  const groups = new Map(); // parent element -> stagger index counter
+  const groups = new Map(); 
   targets.forEach(t => {
     t.classList.add('reveal');
     const parent = t.parentElement;
@@ -1723,6 +1530,7 @@ function fixedPurchaseOrderSegments(records) {
 
   targets.forEach(t => observer.observe(t));
 })();
+
 (function () {
   function addSweep(box) {
     if (!box || box.querySelector('.donut-sweep')) return;
@@ -1730,15 +1538,14 @@ function fixedPurchaseOrderSegments(records) {
     sweep.className = 'donut-sweep';
     box.appendChild(sweep);
   }
- 
+  
   function scan() {
     document.querySelectorAll('.pcp-donut-box').forEach(addSweep);
   }
- 
+  
   document.addEventListener('DOMContentLoaded', scan);
   window.addEventListener('load', scan);
- 
-  // Catch donuts that render after their initial Zoho data fetch.
+  
   const observer = new MutationObserver(scan);
   observer.observe(document.body, { childList: true, subtree: true });
 })();

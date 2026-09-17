@@ -1,3 +1,5 @@
+console.info("%cDIVINE SCRIPT BUILD MARKER: 2026-09-15-v7", "background:#111;color:#0f0;font-weight:bold;padding:4px");
+
 ///////////////////////////////// loader animation ////////////////////////////////
 (function () {
   document.addEventListener('DOMContentLoaded', function () {
@@ -987,7 +989,16 @@ function fixedPurchaseOrderSegments(records) {
 
 ////////////////////////// batch health cards //////////////////////////
 (async function initBatchHealth() {
-  const batchHealth = { total: 0, healthy: 0, expirySoon: 0, expired: 0 };
+  // Total Batches is a flat count of All_Batch_Details — independent of
+  // product resolution. Healthy/Expiry Soon/Expired are each computed
+  // separately per category and only ever combined by addition at the end;
+  // no state here is ever calculated "directly from only one category".
+  const counts = {
+    finishedGoodsHealthy: 0, rawMaterialsHealthy: 0,
+    finishedGoodsExpirySoon: 0, rawMaterialsExpirySoon: 0,
+    finishedGoodsExpired: 0, rawMaterialsExpired: 0
+  };
+  let totalBatches = 0;
 
   function lookupId(value) {
     if (Array.isArray(value)) return value.length ? lookupId(value[0]) : null;
@@ -995,12 +1006,87 @@ function fixedPurchaseOrderSegments(records) {
     return value;
   }
 
+<<<<<<< HEAD
+=======
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function isValidBatchNumber(batch) {
+    const batchNumber = displayValue(batch[BATCH_FIELDS.number]);
+    return !(batchNumber === undefined || batchNumber === null || String(batchNumber).trim() === "");
+  }
+
+  // Classifies one Batch_Details row into the counts above given its
+  // product's category. Shared by the primary join path and the
+  // getRecordById fallback so the two can never compute different results
+  // for the same row.
+  //
+  // Finished Goods: Manufacturing_Date gates all three states — a batch
+  // that hasn't started manufacturing yet (or has no Manufacturing_Date)
+  // is left unclassified, never counted Healthy.
+  //   Expired:      Manufacturing_Date <= today AND today >= Expiry_Date
+  //   Expiry Soon:  Manufacturing_Date <= today AND today >= Expiry_Date-2d AND today < Expiry_Date
+  //   Healthy:      Manufacturing_Date <= today AND today < Expiry_Date-5d
+  //
+  // Raw Materials: Manufacturing_Date is never used.
+  //   Expired:      today >= Expiry_Date
+  //   Expiry Soon:  today >= Expiry_Date-2d AND today < Expiry_Date
+  //   Healthy:      today < Expiry_Date-5d
+  function classifyBatch(batch, category) {
+    if (!isValidBatchNumber(batch)) return;
+    if (category !== "Finished Goods" && category !== "Raw Materials") return;
+
+    const expiryDate = parseZohoDate(batch[BATCH_FIELDS.expiryDate]);
+    if (!expiryDate) return; // Missing expiry dates are intentionally unclassified.
+    expiryDate.setHours(0, 0, 0, 0);
+
+    const soonCutoff = new Date(expiryDate);
+    soonCutoff.setDate(soonCutoff.getDate() - 2); // Expiry_Date - 2 days
+    const healthyCutoff = new Date(expiryDate);
+    healthyCutoff.setDate(healthyCutoff.getDate() - 5); // Expiry_Date - 5 days
+
+    if (category === "Finished Goods") {
+      const manufacturingDate = parseZohoDate(batch[BATCH_FIELDS.manufacturingDate]);
+      if (!manufacturingDate) return; // No Manufacturing_Date — unclassified.
+      manufacturingDate.setHours(0, 0, 0, 0);
+      if (manufacturingDate > today) return; // Not yet in production — unclassified.
+
+      if (today >= expiryDate) {
+        counts.finishedGoodsExpired++;
+      } else if (today >= soonCutoff && today < expiryDate) {
+        counts.finishedGoodsExpirySoon++;
+      } else if (today < healthyCutoff) {
+        counts.finishedGoodsHealthy++;
+      }
+    } else {
+      if (today >= expiryDate) {
+        counts.rawMaterialsExpired++;
+      } else if (today >= soonCutoff && today < expiryDate) {
+        counts.rawMaterialsExpirySoon++;
+      } else if (today < healthyCutoff) {
+        counts.rawMaterialsHealthy++;
+      }
+    }
+  }
+
+>>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
   try {
     const [batches, productById] = await Promise.all([
       fetchReportCached(REPORTS.batches),
       getProductById()
     ]);
 
+<<<<<<< HEAD
+=======
+    // Total Batches = All_Batch_Details count, independent of category or
+    // whether the Product_Master join below resolves.
+    totalBatches = batches.filter(isValidBatchNumber).length;
+
+    // Some Creator report layouts expose the lookup's display value but an ID
+    // belonging to the report row rather than Product_Master.ID. Build a
+    // display-name index from the already-cached Product Master records as a
+    // safe relationship fallback; no additional report call is needed.
+>>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
     const productByName = new Map();
     productById.forEach(product => {
       const name = String(product.name || "").trim();
@@ -1023,10 +1109,15 @@ function fixedPurchaseOrderSegments(records) {
     let rowsMissingProductLookup = 0;
 
     batches.forEach(batch => {
+<<<<<<< HEAD
       const batchNumber = displayValue(batch[BATCH_FIELDS.number]);
       if (batchNumber === undefined || batchNumber === null || String(batchNumber).trim() === "") return;
 
       batchHealth.total++;
+=======
+      if (!isValidBatchNumber(batch)) return;
+      validBatchCount++;
+>>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
 
       const product = resolveProduct(batch);
       if (!product) {
@@ -1040,21 +1131,64 @@ function fixedPurchaseOrderSegments(records) {
       if (status) batchHealth[status]++;
     });
 
+<<<<<<< HEAD
+=======
+    // Fallback: the join above resolved nothing at all. Re-fetch each
+    // relevant product's own record by ID, which returns its Batch_Details
+    // subform directly regardless of the report-level field limitation.
+    const joinFailed = validBatchCount > 0 && rowsMissingProductLookup === validBatchCount;
+    const canFetchById = typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.API
+      && typeof ZOHO.CREATOR.API.getRecordById === 'function';
+
+    if (joinFailed && canFetchById) {
+      Object.keys(counts).forEach(key => { counts[key] = 0; });
+      const products = await getProductMaster();
+      for (const product of products) {
+        const category = String(displayValue(product[PRODUCT_FIELDS.category]) || "").trim();
+        if (category !== "Finished Goods" && category !== "Raw Materials") continue;
+        try {
+          const res = await ZOHO.CREATOR.API.getRecordById({
+            app_name: ZOHO_APP, report_name: REPORTS.products, id: product[PRODUCT_FIELDS.id], field_config: "all"
+          });
+          const record = (res && (res.data || res.record)) || res;
+          const rows = record ? record[PRODUCT_FIELDS.batchDetails] : null;
+          const batchRows = Array.isArray(rows) ? rows : (rows ? [rows] : []);
+          batchRows.forEach(batch => classifyBatch(batch, category));
+        } catch (error) {
+          console.error(`Error fetching Product_Master record ${product[PRODUCT_FIELDS.id]} by ID:`, error);
+        }
+        await __delay(150); // throttle — avoid 429 Too Many Requests across ~N sequential calls
+      }
+    }
+
+    // Kept in the browser console only, so an unavailable/unshared field is
+    // immediately distinguishable from a genuine zero-batch result. If
+    // rowsMissingProductLookup is still close to batchRows AND
+    // usedGetRecordByIdFallback is false, ZOHO.CREATOR.API.getRecordById
+    // isn't available in this widget SDK version — that method name/shape
+    // needs to be re-checked against Zoho's current widget JS API docs.
+>>>>>>> 374bd86936ead6a77dbd7c806070709b24857253
     console.info("Batch Health loaded", {
       batchRows: batches.length,
+      totalBatches,
       productRows: productById.size,
       rowsMissingProductLookup,
       sampleBatchKeys: batches.length ? Object.keys(batches[0]) : [],
-      batchHealth
+      counts
     });
   } catch (error) {
     console.error("Error fetching All_Batch_Details:", error);
   }
 
-  setText('batchOverall', batchHealth.total);
-  setText('batchHealthy', batchHealth.healthy);
-  setText('batchExpirySoon', batchHealth.expirySoon);
-  setText('batchExpired', batchHealth.expired);
+  // Final combination — each bucket is always Finished Goods + Raw Materials.
+  const healthyBatches = counts.finishedGoodsHealthy + counts.rawMaterialsHealthy;
+  const expirySoon = counts.finishedGoodsExpirySoon + counts.rawMaterialsExpirySoon;
+  const expired = counts.finishedGoodsExpired + counts.rawMaterialsExpired;
+
+  setText('batchOverall', totalBatches);
+  setText('batchHealthy', healthyBatches);
+  setText('batchExpirySoon', expirySoon);
+  setText('batchExpired', expired);
 })();
 
 ////////////////////////// stock distribution //////////////////////////

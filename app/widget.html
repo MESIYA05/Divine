@@ -224,8 +224,8 @@
           </svg>
         </div>
         <div class="stat-value" id="ctarget">0</div>
-        <div class="stat-label">Confirmed Target</div>
-        <div class="stat-sub">Completed</div>
+        <div class="stat-label">Completed Target</div>
+        <div class="stat-sub">Consumed finished goods</div>
       </div>
 
       <!-- 7. Low Stock -->
@@ -306,7 +306,7 @@
           <span class="panel-badge">Live</span>
         </div>
         <div class="pcp-donut-wrap">
-          <div class="pcp-donut-box" style="width:200px;height:200px;">
+          <div class="pcp-donut-box">
             <svg id="statusDonutSvg" viewBox="0 0 200 200" width="200" height="200"></svg>
             <div class="pcp-donut-center">
               <span class="pcp-donut-total" id="totalpt">0</span>
@@ -457,13 +457,20 @@
     <div class="batch-section">
       <div class="section-header-row">
         <div class="head-title-wrap">
-          <div class="head-icon-chip">
+          <div class="head-icon-chip batch-title-chip">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
             </svg>
           </div>
           <div>
-            <h2>Batch &amp; Quality Health</h2>
+            <div class="batch-eyebrow-wrap">
+              <span class="batch-eyebrow">Quality Assurance</span>
+              
+              
+                
+              </span>
+            </div>
+            <h2 class="batch-headline">Batch &amp; Quality Health</h2>
             <p class="section-sub">Real-time batch shelf life &amp; expiration telemetry</p>
           </div>
         </div>
@@ -471,7 +478,7 @@
 
       <div class="batch-grid">
 
-         <div class="batch-card batch-emeral">
+        <div class="batch-card batch-emerald">
           <div class="batch-body">
             <span class="batch-value" id="batchOverall">0</span>
             <span class="batch-label">Total Batches</span>
@@ -538,7 +545,7 @@
           <span class="panel-badge">PO</span>
         </div>
         <div class="pcp-donut-wrap">
-          <div class="pcp-donut-box" style="width:190px;height:190px;">
+          <div class="pcp-donut-box">
             <svg id="poDonutSvg" viewBox="0 0 190 190" width="190" height="190"></svg>
             <div class="pcp-donut-center">
               <div class="po-donut-center-icon">

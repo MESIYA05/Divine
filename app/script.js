@@ -301,43 +301,6 @@ function parseZohoDate(value) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// -------------------------------------------------------------
-// NEW: UPDATED BATCH HEALTH LOGIC 
-// -------------------------------------------------------------
-function getBatchHealthStatus(batch, productCategory, currentDate = new Date(), expirySoonDays = 2) {
-  const category = String(displayValue(productCategory) || "").trim();
-  
-  const today = new Date(currentDate);
-  if (isNaN(today.getTime())) return null;
-  today.setHours(0, 0, 0, 0);
-
-  const expiryDate = parseZohoDate(batch[BATCH_FIELDS.expiryDate]);
-  if (!expiryDate) return null;
-  expiryDate.setHours(0, 0, 0, 0);
-
-  const expirySoonCutoff = new Date(today);
-  expirySoonCutoff.setDate(today.getDate() + expirySoonDays);
-
-  if (category === "Finished Goods") {
-    const manufacturingDate = parseZohoDate(batch[BATCH_FIELDS.manufacturingDate]);
-    if (!manufacturingDate) return null;
-    manufacturingDate.setHours(0, 0, 0, 0);
-
-    if (today > expiryDate) return "expired";
-    if (expiryDate <= expirySoonCutoff) return "expirySoon";
-    if (today >= manufacturingDate && today <= expiryDate) return "healthy";
-    
-    return null; // Date is before manufacturing date
-  } 
-  else if (category === "Raw Materials") {
-    if (today > expiryDate) return "expired";
-    if (expiryDate <= expirySoonCutoff) return "expirySoon";
-    return "healthy"; 
-  }
-  
-  return null; // Fallback for unrecognized categories
-}
-
 function formatShortDate(d) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[d.getMonth()]} ${d.getDate()}`;
@@ -487,6 +450,8 @@ window.animateCount = animateCount;
       bar.addEventListener('mouseenter', e => showTooltip(e, d));
       bar.addEventListener('mousemove', moveTooltip);
       bar.addEventListener('mouseleave', hideTooltip);
+      bar.addEventListener('touchstart', e => showTooltip(e.touches ? e.touches[0] : e, d), { passive: true });
+      bar.addEventListener('touchend', hideTooltip, { passive: true });
       svg.appendChild(bar);
 
       const xl = el('text', { x: x + barW / 2, y: BOTTOM + 22, class: 'pcp-xlabel', 'text-anchor': 'middle' });
@@ -522,9 +487,12 @@ window.animateCount = animateCount;
   }
   function moveTooltip(e) {
     if (!tooltip || !wrap) return;
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : undefined);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
+    if (clientX === undefined) return;
     const rect = wrap.getBoundingClientRect();
-    tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-    tooltip.style.top = (e.clientY - rect.top - 12) + 'px';
+    tooltip.style.left = (clientX - rect.left + 12) + 'px';
+    tooltip.style.top = (clientY - rect.top - 12) + 'px';
   }
   function hideTooltip() { if (tooltip) tooltip.style.opacity = '0'; }
 
@@ -576,6 +544,10 @@ window.animateCount = animateCount;
     const svg = document.getElementById(svgId);
     if (!svg) return;
     svg.innerHTML = '';
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
     const cx = size / 2, cy = size / 2;
     const circumference = 2 * Math.PI * r;
     let offsetAcc = 0;
@@ -634,14 +606,26 @@ window.animateCount = animateCount;
           `<div class="po-chip-body"><span class="po-chip-label">${seg.label}</span>` +
           `<span class="po-chip-pct">${pct}% of total</span></div>` +
           `<span class="po-chip-count">${seg.count}</span>`;
-        item.addEventListener('mouseenter', () => {
+        
+        const highlight = () => {
           svg.querySelectorAll('circle').forEach(c => {
             c.classList.toggle('seg-highlight', c.dataset.key === seg.key);
             c.classList.toggle('seg-dim', c.dataset.key !== seg.key);
           });
-        });
-        item.addEventListener('mouseleave', () => {
+        };
+        const unhighlight = () => {
           svg.querySelectorAll('circle').forEach(c => c.classList.remove('seg-highlight', 'seg-dim'));
+        };
+
+        item.addEventListener('mouseenter', highlight);
+        item.addEventListener('mouseleave', unhighlight);
+        item.addEventListener('click', () => {
+          const isActive = item.classList.toggle('active-chip');
+          legend.querySelectorAll('.po-chip').forEach(other => {
+            if (other !== item) other.classList.remove('active-chip');
+          });
+          if (isActive) highlight();
+          else unhighlight();
         });
         legend.appendChild(item);
       });
@@ -1009,11 +993,6 @@ function fixedPurchaseOrderSegments(records) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  function isValidBatchNumber(batch) {
-    const batchNumber = displayValue(batch[BATCH_FIELDS.number]);
-    return !(batchNumber === undefined || batchNumber === null || String(batchNumber).trim() === "");
-  }
-
   // Classifies one Batch_Details row into the counts above given its
   // product's category. Shared by the primary join path and the
   // getRecordById fallback so the two can never compute different results
@@ -1031,7 +1010,6 @@ function fixedPurchaseOrderSegments(records) {
   //   Expiry Soon:  today >= Expiry_Date-2d AND today < Expiry_Date
   //   Healthy:      today < Expiry_Date-5d
   function classifyBatch(batch, category) {
-    if (!isValidBatchNumber(batch)) return;
     if (category !== "Finished Goods" && category !== "Raw Materials") return;
 
     const expiryDate = parseZohoDate(batch[BATCH_FIELDS.expiryDate]);
@@ -1072,10 +1050,11 @@ function fixedPurchaseOrderSegments(records) {
       fetchReportCached(REPORTS.batches),
       getProductById()
     ]);
+    console.log("Fetched All_Batch_Details rows:", batches);
 
     // Total Batches = All_Batch_Details count, independent of category or
     // whether the Product_Master join below resolves.
-    totalBatches = batches.filter(isValidBatchNumber).length;
+    totalBatches = batches.length;
 
     // Some Creator report layouts expose the lookup's display value but an ID
     // belonging to the report row rather than Product_Master.ID. Build a
@@ -1091,6 +1070,7 @@ function fixedPurchaseOrderSegments(records) {
 
     function resolveProduct(batch) {
       const value = batch[BATCH_FIELDS.productLookup];
+      console.log("batch[BATCH_FIELDS.productLookup]:", value);
       if (value === undefined || value === null || value === "") return null;
       const id = lookupId(value);
       if (id !== undefined && id !== null && productById.has(String(id))) return productById.get(String(id));
@@ -1098,15 +1078,11 @@ function fixedPurchaseOrderSegments(records) {
       return name ? (productByName.get(name) || null) : null;
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     let rowsMissingProductLookup = 0;
 
     batches.forEach(batch => {
-      if (!isValidBatchNumber(batch)) return;
-      validBatchCount++;
-
       const product = resolveProduct(batch);
+      console.log("product:",product)
       if (!product) {
         rowsMissingProductLookup++;
         return;
@@ -1114,21 +1090,31 @@ function fixedPurchaseOrderSegments(records) {
       const category = String(displayValue(product.category) || "").trim();
       if (category !== "Finished Goods" && category !== "Raw Materials") return;
 
-      const status = getBatchHealthStatus(batch, category, today);
-      if (status) batchHealth[status]++;
+      classifyBatch(batch, category);
     });
 
-    // Fallback: the join above resolved nothing at all. Re-fetch each
-    // relevant product's own record by ID, which returns its Batch_Details
-    // subform directly regardless of the report-level field limitation.
-    const joinFailed = validBatchCount > 0 && rowsMissingProductLookup === validBatchCount;
+    // The batch report can omit the Product_Master parent lookup. In that
+    // case, use Product_Master.Batch_Details as the reverse relation.
+    const joinFailed = batches.length > 0 && rowsMissingProductLookup === batches.length;
     const canFetchById = typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.API
       && typeof ZOHO.CREATOR.API.getRecordById === 'function';
 
-    if (joinFailed && canFetchById) {
+    if (joinFailed) {
       Object.keys(counts).forEach(key => { counts[key] = 0; });
       const products = await getProductMaster();
-      for (const product of products) {
+      let embeddedBatchRows = 0;
+      products.forEach(product => {
+        const category = String(displayValue(product[PRODUCT_FIELDS.category]) || "").trim();
+        if (category !== "Finished Goods" && category !== "Raw Materials") return;
+        const rows = product[PRODUCT_FIELDS.batchDetails];
+        const batchRows = Array.isArray(rows) ? rows : (rows ? [rows] : []);
+        batchRows.forEach(batch => classifyBatch(batch, category));
+        embeddedBatchRows += batchRows.length;
+      });
+
+      // Only make one request per product when the report omitted its
+      // embedded subform rows.
+      if (embeddedBatchRows === 0 && canFetchById) for (const product of products) {
         const category = String(displayValue(product[PRODUCT_FIELDS.category]) || "").trim();
         if (category !== "Finished Goods" && category !== "Raw Materials") continue;
         try {
@@ -1219,15 +1205,20 @@ function fixedPurchaseOrderSegments(records) {
       svg.appendChild(name);
       svg.appendChild(el('rect', { x: LEFT, y, width: RIGHT - LEFT, height: 24, rx: 7, class: 'warehouse-bar-track' }));
       const bar = el('rect', { x: LEFT, y, width, height: 24, rx: 7, fill: item.color, class: 'warehouse-bar' });
-      bar.addEventListener('mouseenter', event => {
+      const handleWhTooltip = event => {
         if (!tooltip || !wrap) return;
         tooltip.textContent = `${item.label}: ${item.value.toLocaleString()} units (${pct}% of ${grandTotal.toLocaleString()})`;
         tooltip.style.opacity = '1';
         const bounds = wrap.getBoundingClientRect();
-        tooltip.style.left = `${event.clientX - bounds.left + 12}px`;
-        tooltip.style.top = `${event.clientY - bounds.top - 12}px`;
-      });
+        const clientX = event.clientX !== undefined ? event.clientX : (event.touches && event.touches[0] ? event.touches[0].clientX : bounds.left);
+        const clientY = event.clientY !== undefined ? event.clientY : (event.touches && event.touches[0] ? event.touches[0].clientY : bounds.top);
+        tooltip.style.left = `${clientX - bounds.left + 12}px`;
+        tooltip.style.top = `${clientY - bounds.top - 12}px`;
+      };
+      bar.addEventListener('mouseenter', handleWhTooltip);
+      bar.addEventListener('touchstart', handleWhTooltip, { passive: true });
       bar.addEventListener('mouseleave', () => { if (tooltip) tooltip.style.opacity = '0'; });
+      bar.addEventListener('touchend', () => { if (tooltip) tooltip.style.opacity = '0'; }, { passive: true });
       svg.appendChild(bar);
       const total = el('text', { x: Math.min(LEFT + width + 10, RIGHT + 4), y: y + 17, class: 'warehouse-bar-value' });
       total.textContent = `${item.value.toLocaleString()} units · ${pct}%`;
@@ -1271,7 +1262,7 @@ function fixedPurchaseOrderSegments(records) {
 
   let WAREHOUSES = {
     main: { label: 'Main Warehouse', subtitle: 'Main Warehouse stock levels', columns: ['Product', 'Warehouse Name', 'Stock on Hand', 'Committed Stock', 'Available Stock'], rows: [] },
-    production: { label: 'Production Warehouse', subtitle: 'Production Warehouse committed stock', columns: ['Product', 'Warehouse Name', 'Committed Stock', 'Production Count'], rows: [] },
+    production: { label: 'Production Warehouse', subtitle: 'Production Warehouse  committed stock', columns: ['Product', 'Warehouse Name', 'Committed Stock', 'Production Count'], rows: [] },
     scrap: { label: 'Scrap Warehouse', subtitle: 'Scrap Warehouse quantity', columns: ['Product', 'Warehouse Name', 'Product Category', 'Scrap Quantity'], rows: [] }
   };
 
@@ -1570,6 +1561,8 @@ function fixedPurchaseOrderSegments(records) {
       bar.addEventListener('mouseenter', e => showTooltip(e, d));
       bar.addEventListener('mousemove', moveTooltip);
       bar.addEventListener('mouseleave', hideTooltip);
+      bar.addEventListener('touchstart', e => showTooltip(e.touches ? e.touches[0] : e, d), { passive: true });
+      bar.addEventListener('touchend', hideTooltip, { passive: true });
       svg.appendChild(bar);
 
       const xl = el('text', { x: x + barW / 2, y: BOTTOM + 22, class: 'pcp-xlabel', 'text-anchor': 'middle' });
@@ -1592,9 +1585,12 @@ function fixedPurchaseOrderSegments(records) {
   }
   function moveTooltip(e) {
     if (!tooltip || !wrap) return;
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : undefined);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
+    if (clientX === undefined) return;
     const rect = wrap.getBoundingClientRect();
-    tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-    tooltip.style.top = (e.clientY - rect.top - 12) + 'px';
+    tooltip.style.left = (clientX - rect.left + 12) + 'px';
+    tooltip.style.top = (clientY - rect.top - 12) + 'px';
   }
   function hideTooltip() { if (tooltip) tooltip.style.opacity = '0'; }
 
@@ -1633,7 +1629,7 @@ function fixedPurchaseOrderSegments(records) {
     t.classList.add('reveal');
     const parent = t.parentElement;
     const idx = groups.get(parent) || 0;
-    t.style.transitionDelay = `${Math.min(idx, 4) * 90}ms`;
+    t.style.transitionDelay = `${Math.min(idx, 4) * 70}ms`;
     groups.set(parent, idx + 1);
   });
 
@@ -1644,9 +1640,14 @@ function fixedPurchaseOrderSegments(records) {
         observer.unobserve(entry.target);
       }
     });
-  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+  }, { threshold: 0.05, rootMargin: '50px 0px 0px 0px' });
 
   targets.forEach(t => observer.observe(t));
+
+  // Fallback: reveal all targets after dashboard is shown
+  setTimeout(() => {
+    targets.forEach(t => t.classList.add('reveal-in'));
+  }, 2600);
 })();
 
 (function () {
@@ -1661,9 +1662,11 @@ function fixedPurchaseOrderSegments(records) {
     document.querySelectorAll('.pcp-donut-box').forEach(addSweep);
   }
   
-  document.addEventListener('DOMContentLoaded', scan);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scan);
+  } else {
+    scan();
+  }
   window.addEventListener('load', scan);
-  
-  const observer = new MutationObserver(scan);
-  observer.observe(document.body, { childList: true, subtree: true });
 })();
+

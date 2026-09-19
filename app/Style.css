@@ -245,7 +245,7 @@ img, svg {
 .loader-core {
   width: clamp(44px, 8vw, 54px);
   height: clamp(44px, 8vw, 54px);
-  border-radius: 14px;
+  border-radius: 50%;
   background: #ffffff;
   display: flex;
   align-items: center;
@@ -360,11 +360,11 @@ img, svg {
 .lstep-track-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #34d399 60%, #6ee7b7 100%);
+  width: 0;
+  background: linear-gradient(90deg, #10b981 0%, #34d399 60%, #f4c85d 100%);
   border-radius: var(--radius-pill);
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
-  animation: lstepFillGlow 2s ease-in-out infinite alternate;
+  transition: width 0.14s linear;
 }
 
 @keyframes lstepFillGlow {
@@ -381,6 +381,7 @@ img, svg {
   gap: 6px;
   flex: 1;
   min-width: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .lstep-node {
@@ -393,7 +394,9 @@ img, svg {
   background: rgba(11, 36, 23, 0.92);
   border: 2px solid rgba(255, 255, 255, 0.14);
   color: rgba(255, 255, 255, 0.35);
-  transition: all 0.3s ease;
+  position: relative;
+  isolation: isolate;
+  transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
   flex-shrink: 0;
 }
 
@@ -409,11 +412,39 @@ img, svg {
   box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
 }
 
+.lstep.is-done .lstep-node::after {
+  content: '✓';
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #123321;
+  border-radius: 50%;
+  background: var(--emerald-400);
+  color: #07351f;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .lstep.is-active .lstep-node {
   border-color: var(--gold);
   color: #fbbf24;
   background: rgba(229, 169, 60, 0.16);
   animation: lstepPulse 1.7s ease-in-out infinite;
+}
+
+.lstep.is-active .lstep-node::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  z-index: -1;
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  border-radius: inherit;
+  animation: activeStepRipple 1.7s ease-out infinite;
 }
 
 .lstep.is-working .lstep-node {
@@ -428,6 +459,11 @@ img, svg {
 @keyframes lstepWorking {
   0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55), 0 0 14px rgba(16, 185, 129, 0.4); transform: scale(1); }
   50%      { box-shadow: 0 0 0 9px rgba(16, 185, 129, 0), 0 0 26px rgba(16, 185, 129, 0.6); transform: scale(1.09); }
+}
+
+@keyframes activeStepRipple {
+  0% { transform: scale(0.78); opacity: 0.9; }
+  75%, 100% { transform: scale(1.22); opacity: 0; }
 }
 
 .lstep-label {
@@ -480,13 +516,13 @@ img, svg {
 }
 
 .loader-bar-fill {
-  width: 6%;
+  width: 0;
   height: 100%;
   background: linear-gradient(90deg, #10b981, #34d399 55%, #e5a93c);
   border-radius: var(--radius-pill);
-  animation: loadProgress 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   position: relative;
   overflow: hidden;
+  transition: width 0.14s linear;
 }
 
 .loader-bar-fill::after {
@@ -500,14 +536,15 @@ img, svg {
 .loader-bar-dot {
   position: absolute;
   top: 50%;
-  left: 100%;
+  left: 0;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: #fff7e6;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 12px 3px rgba(245, 205, 120, 0.75);
-  animation: loadDot 2s cubic-bezier(0.4, 0, 0.2, 1) forwards, dotBlink 1.2s ease-in-out infinite alternate;
+  animation: dotBlink 1.2s ease-in-out infinite alternate;
+  transition: left 0.14s linear;
 }
 
 .loader-bar-pct {
@@ -2438,9 +2475,6 @@ body.modal-open {
   .output-period-field {
     flex: 1;
     min-width: 120px;
-  }
-  .loader-core {
-    border-radius: 50%;
   }
   #dashboard #whTableSub br {
     display: block;

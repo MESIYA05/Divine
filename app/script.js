@@ -1,29 +1,59 @@
 console.info("%cDIVINE SCRIPT BUILD MARKER: 2026-09-15-v7", "background:#111;color:#0f0;font-weight:bold;padding:4px");
 
-///////////////////////////////// loader animation ////////////////////////////////
+///////////////////////////////// premium loader animation ////////////////////////////////
 (function () {
-  document.addEventListener('DOMContentLoaded', function () {
-    // Count the progress percentage up to 100%
-    var pctEl = document.querySelector('.loader-bar-pct');
-    if (pctEl) {
-      var start = null;
-      var dur = 1900;
-      var raf = function (t) {
-        if (start === null) start = t;
-        var p = Math.min(1, (t - start) / dur);
-        pctEl.textContent = Math.round(p * 100) + '%';
-        if (p < 1) requestAnimationFrame(raf);
-      };
-      requestAnimationFrame(raf);
-    }
-  });
+  var LOADER_DURATION = 2800;
+  var startedAt = 0;
+  var processStages = [
+    ['Sourcing Materials', 'Validating ingredients and inventory levels…', 'Raw material inventory verified'],
+    ['Making Product', 'Mixing, proofing, and preparing production batches…', 'Synchronizing live production records…'],
+    ['Quality Review', 'Checking finished goods against quality standards…', 'Validating finished goods'],
+    ['Freezing & Storage', 'Confirming cold-chain readiness and stock placement…', 'Refreshing warehouse availability'],
+    ['Packing & Dispatch', 'Preparing packaged goods for delivery…', 'Finalizing your production dashboard']
+  ];
 
+  function beginLoader() {
+    var pctEl = document.querySelector('.loader-bar-pct');
+    var bar = document.querySelector('.loader-bar');
+    var fill = document.querySelector('.loader-bar-fill');
+    var dot = document.querySelector('.loader-bar-dot');
+    var phase = document.querySelector('.loader-phase');
+    var detail = document.querySelector('.loader-phase-sub');
+    var status = document.querySelector('.loader-status-text span:last-child');
+    var steps = Array.prototype.slice.call(document.querySelectorAll('.lstep[data-process-step]'));
+    startedAt = performance.now();
+
+    function render(now) {
+      var progress = Math.min((now - startedAt) / LOADER_DURATION, 1);
+      var percent = Math.round(progress * 100);
+      var index = Math.min(processStages.length - 1, Math.floor(progress * processStages.length));
+      var stage = processStages[index];
+      if (pctEl) pctEl.textContent = percent + '%';
+      if (bar) bar.setAttribute('aria-valuenow', String(percent));
+      if (fill) fill.style.width = percent + '%';
+      if (dot) dot.style.left = percent + '%';
+      if (phase) phase.textContent = stage[0];
+      if (detail) detail.textContent = stage[1];
+      if (status) status.textContent = stage[2];
+      steps.forEach(function (step, stepIndex) {
+        step.classList.toggle('is-done', stepIndex < index);
+        step.classList.toggle('is-active', stepIndex === index);
+      });
+      if (progress < 1) requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  }
+
+  document.addEventListener('DOMContentLoaded', beginLoader);
   window.addEventListener('load', function () {
+    var remaining = Math.max(0, LOADER_DURATION - (performance.now() - startedAt));
     setTimeout(function () {
-      document.getElementById('loader').classList.add('hide');
-      document.getElementById('dashboard').classList.add('show');
+      var loader = document.getElementById('loader');
+      var dashboard = document.getElementById('dashboard');
+      if (loader) loader.classList.add('hide');
+      if (dashboard) dashboard.classList.add('show');
       document.body.classList.add('loaded');
-    }, 2000);
+    }, remaining);
   });
 })();
 

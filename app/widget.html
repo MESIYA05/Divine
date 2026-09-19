@@ -36,10 +36,10 @@
       <div class="loader-subtitle">Manufacturing &amp; Production Intelligence</div>
 
       <!-- Production process stepper -->
-      <div class="loader-steps">
+      <div class="loader-steps" aria-label="Production process progress">
         <div class="lstep-track"><div class="lstep-track-fill"></div></div>
 
-        <div class="lstep is-done">
+        <div class="lstep is-active" data-process-step="0">
           <span class="lstep-node">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
@@ -49,7 +49,7 @@
           <span class="lstep-label">Raw Material</span>
         </div>
 
-        <div class="lstep is-done is-working">
+        <div class="lstep" data-process-step="1">
           <span class="lstep-node">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
@@ -59,7 +59,7 @@
           <span class="lstep-label">Making</span>
         </div>
 
-        <div class="lstep is-done">
+        <div class="lstep" data-process-step="2">
           <span class="lstep-node">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2 2 22l10-3.6L22 22 12 2Z"/>
@@ -69,7 +69,7 @@
           <span class="lstep-label">Finished Good</span>
         </div>
 
-        <div class="lstep is-done">
+        <div class="lstep" data-process-step="3">
           <span class="lstep-node">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2v20"/><path d="m4.5 6 15 12"/><path d="m19.5 6-15 12"/>
@@ -78,7 +78,7 @@
           <span class="lstep-label">Frozen</span>
         </div>
         
-        <div class="lstep is-done">
+        <div class="lstep" data-process-step="4">
           <span class="lstep-node">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="m7.5 4.3 9 5.15"/>
@@ -94,7 +94,7 @@
       <div class="loader-phase-sub">Processing and preparing the production…</div>
 
       <div class="loader-bar-wrap">
-        <div class="loader-bar">
+        <div class="loader-bar" role="progressbar" aria-label="Application loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="loader-bar-fill"></div>
           <span class="loader-bar-dot"></span>
         </div>

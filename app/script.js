@@ -1262,7 +1262,7 @@ function fixedPurchaseOrderSegments(records) {
 
   let WAREHOUSES = {
     main: { label: 'Main Warehouse', subtitle: 'Main Warehouse stock levels', columns: ['Product', 'Warehouse Name', 'Stock on Hand', 'Committed Stock', 'Available Stock'], rows: [] },
-    production: { label: 'Production Warehouse', subtitle: 'Production Warehouse  committed stock', columns: ['Product', 'Warehouse Name', 'Committed Stock', 'Production Count'], rows: [] },
+    production: { label: 'Production Warehouse', subtitle: 'Production Warehouse<br>Committed stock', columns: ['Product', 'Warehouse Name', 'Committed Stock', 'Production Count'], rows: [] },
     scrap: { label: 'Scrap Warehouse', subtitle: 'Scrap Warehouse quantity', columns: ['Product', 'Warehouse Name', 'Product Category', 'Scrap Quantity'], rows: [] }
   };
 
@@ -1387,7 +1387,11 @@ function fixedPurchaseOrderSegments(records) {
       body.innerHTML = bodyRowsHtml(wh, shown);
     }
 
-    if (sub) sub.textContent = wh.subtitle;
+    if (sub) {
+      // The production subtitle intentionally wraps on small screens; all values
+      // are static labels defined above, so no external content is injected here.
+      sub.innerHTML = wh.subtitle;
+    }
   }
 
   if (tabs) {
@@ -1669,4 +1673,3 @@ function fixedPurchaseOrderSegments(records) {
   }
   window.addEventListener('load', scan);
 })();
-

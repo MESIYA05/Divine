@@ -263,6 +263,11 @@ img, svg {
   display: block;
 }
 
+/* The production subtitle remains one line on larger screens. */
+#dashboard #whTableSub br {
+  display: none;
+}
+
 .loader-core-mark {
   flex-direction: column;
   align-items: center;
@@ -2194,8 +2199,8 @@ th.col-num {
 #prodMonthChart {
   width: 100%;
   height: auto;
-  max-height: 220px;
-  min-height: 170px;
+  max-height: 270px;
+  min-height: 190px;
 }
 
 /* ===================== VIEW ALL MODAL ===================== */
@@ -2433,6 +2438,12 @@ body.modal-open {
   .output-period-field {
     flex: 1;
     min-width: 120px;
+  }
+  .loader-core {
+    border-radius: 50%;
+  }
+  #dashboard #whTableSub br {
+    display: block;
   }
   .app-modal {
     max-height: 92vh;

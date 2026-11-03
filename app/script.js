@@ -94,6 +94,7 @@ const REPORTS = {
   consumptionEntry: "Consumption_Entry_Report",
   finishedGoodsConsumptions: "Finished_Goods_Cunsumptions_Report",
   purchaseOrders: "Purchase_Order_Report",
+  pendingPurchaseOrders: "Pending_Purchase_Orders",
   batches: "All_Batch_Details",
   mainWarehouse: "Main_Warehouse_Stock_Details_Report",
   productionWarehouse: "Production_Stock_Details_Report",
@@ -1696,6 +1697,45 @@ if (document.readyState === 'loading') {
 } else {
   loadDashboardSequentially();
 }
+
+///////////////////////////////// CARD NAVIGATION ////////////////////////////////
+(function initCardNavigation() {
+  function setupPendingPoCard() {
+    const card = document.getElementById('pendingPoCard') || document.getElementById('pendingpo')?.closest('.stat-card');
+    if (!card) return;
+
+    function navigateToPendingPOs() {
+      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
+        ZOHO.CREATOR.UTIL.navigateParentURL({
+          "action": "open",
+          "url": "#Report:Pending_Purchase_Orders",
+          "window": "same"
+        });
+      } else {
+        console.warn("ZOHO.CREATOR.UTIL.navigateParentURL not available, navigating via fallback.");
+        try {
+          window.top.location.hash = "#Report:Pending_Purchase_Orders";
+        } catch (e) {
+          window.location.hash = "#Report:Pending_Purchase_Orders";
+        }
+      }
+    }
+
+    card.addEventListener('click', navigateToPendingPOs);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        navigateToPendingPOs();
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupPendingPoCard);
+  } else {
+    setupPendingPoCard();
+  }
+})();
 
 ///////////////////////////////// SCROLL-REVEAL & VISUAL EFFECTS ////////////////////////////////
 (function initScrollReveal() {

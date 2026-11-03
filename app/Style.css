@@ -864,6 +864,15 @@ img, svg {
   border-color: rgba(26, 91, 57, 0.25);
 }
 
+#pendingPoCard:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+#pendingPoCard:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
 /* Card Accent Top Lines */
 .tint-amber::before      { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 .tint-emerald::before    { background: linear-gradient(90deg, #10b981, #34d399); }

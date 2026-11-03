@@ -95,6 +95,7 @@ const REPORTS = {
   finishedGoodsConsumptions: "Finished_Goods_Cunsumptions_Report",
   purchaseOrders: "Purchase_Order_Report",
   pendingPurchaseOrders: "Pending_Purchase_Orders",
+  lowStockItems: "Low_Stock_Items",
   batches: "All_Batch_Details",
   mainWarehouse: "Main_Warehouse_Stock_Details_Report",
   productionWarehouse: "Production_Stock_Details_Report",
@@ -1707,6 +1708,7 @@ if (document.readyState === 'loading') {
     { id: 'rawMaterialsCard', fallbackValId: 'raw', url: '#Report:Raw_Materials1' },
     { id: 'inProgressCard', fallbackValId: 'inprogress', url: '#Report:Production_Inprogress' },
     { id: 'completedTargetCard', fallbackValId: 'ctarget', url: '#Report:Completed_Production_Target' },
+    { id: 'lowStockCard', fallbackValId: 'lowstock', url: '#Report:Low_Stock_Items' },
     { id: 'pendingPoCard', fallbackValId: 'pendingpo', url: '#Report:Pending_Purchase_Orders' }
   ];
 

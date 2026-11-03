@@ -1700,40 +1700,52 @@ if (document.readyState === 'loading') {
 
 ///////////////////////////////// CARD NAVIGATION ////////////////////////////////
 (function initCardNavigation() {
-  function setupPendingPoCard() {
-    const card = document.getElementById('pendingPoCard') || document.getElementById('pendingpo')?.closest('.stat-card');
-    if (!card) return;
+  const cardNavigations = [
+    { id: 'productsCard', fallbackValId: 'products', url: '#Report:Product_Master_Report' },
+    { id: 'productionTargetCard', fallbackValId: 'production', url: '#Report:Production_Target_Report' },
+    { id: 'finishedGoodsCard', fallbackValId: 'finished', url: '#Report:Finished_Goods1' },
+    { id: 'rawMaterialsCard', fallbackValId: 'raw', url: '#Report:Raw_Materials1' },
+    { id: 'inProgressCard', fallbackValId: 'inprogress', url: '#Report:Production_Inprogress' },
+    { id: 'completedTargetCard', fallbackValId: 'ctarget', url: '#Report:Completed_Production_Target' },
+    { id: 'pendingPoCard', fallbackValId: 'pendingpo', url: '#Report:Pending_Purchase_Orders' }
+  ];
 
-    function navigateToPendingPOs() {
-      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
-        ZOHO.CREATOR.UTIL.navigateParentURL({
-          "action": "open",
-          "url": "#Report:Pending_Purchase_Orders",
-          "window": "same"
-        });
-      } else {
-        console.warn("ZOHO.CREATOR.UTIL.navigateParentURL not available, navigating via fallback.");
-        try {
-          window.top.location.hash = "#Report:Pending_Purchase_Orders";
-        } catch (e) {
-          window.location.hash = "#Report:Pending_Purchase_Orders";
-        }
+  function navigateToReport(reportUrl) {
+    if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
+      ZOHO.CREATOR.UTIL.navigateParentURL({
+        "action": "open",
+        "url": reportUrl,
+        "window": "same"
+      });
+    } else {
+      console.warn("ZOHO.CREATOR.UTIL.navigateParentURL not available, navigating via fallback.");
+      try {
+        window.top.location.hash = reportUrl;
+      } catch (e) {
+        window.location.hash = reportUrl;
       }
     }
+  }
 
-    card.addEventListener('click', navigateToPendingPOs);
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        navigateToPendingPOs();
-      }
+  function setupCardNavigations() {
+    cardNavigations.forEach(nav => {
+      const card = document.getElementById(nav.id) || (nav.fallbackValId && document.getElementById(nav.fallbackValId)?.closest('.stat-card'));
+      if (!card) return;
+
+      card.addEventListener('click', () => navigateToReport(nav.url));
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          navigateToReport(nav.url);
+        }
+      });
     });
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupPendingPoCard);
+    document.addEventListener('DOMContentLoaded', setupCardNavigations);
   } else {
-    setupPendingPoCard();
+    setupCardNavigations();
   }
 })();
 

@@ -155,7 +155,7 @@
     <!-- ===================== QUICK STATS GRID (8 KPI CARDS) ===================== -->
     <div class="stats-grid">
       <!-- 1. Products -->
-      <div class="stat-card tint-amber" title="Total Product Inventory">
+      <div class="stat-card tint-amber" id="productsCard" role="button" tabindex="0" title="Click to view Products Report" aria-label="Products: View Report">
         <div class="stat-icon bg-amber">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -169,7 +169,7 @@
       </div>
 
       <!-- 2. Production Target -->
-      <div class="stat-card tint-emerald" title="Total Production Orders">
+      <div class="stat-card tint-emerald" id="productionTargetCard" role="button" tabindex="0" title="Click to view Production Target Report" aria-label="Production Target: View Report">
         <div class="stat-icon bg-emerald">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>
@@ -181,7 +181,7 @@
       </div>
 
       <!-- 3. Finished Goods -->
-      <div class="stat-card tint-warm-orange" title="Ready to Ship Finished Goods">
+      <div class="stat-card tint-warm-orange" id="finishedGoodsCard" role="button" tabindex="0" title="Click to view Finished Goods Report" aria-label="Finished Goods: View Report">
         <div class="stat-icon bg-warm-orange">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/>
@@ -193,7 +193,7 @@
       </div>
 
       <!-- 4. Raw Materials -->
-      <div class="stat-card tint-teal" title="Raw Materials In Stock">
+      <div class="stat-card tint-teal" id="rawMaterialsCard" role="button" tabindex="0" title="Click to view Raw Materials Report" aria-label="Raw Materials: View Report">
         <div class="stat-icon bg-teal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -205,7 +205,7 @@
       </div>
 
       <!-- 5. In Progress -->
-      <div class="stat-card tint-mint" title="Active Production Targets">
+      <div class="stat-card tint-mint" id="inProgressCard" role="button" tabindex="0" title="Click to view In Progress Production Targets" aria-label="In Progress: View Report">
         <div class="stat-icon bg-mint">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -217,7 +217,7 @@
       </div>
 
       <!-- 6. Confirmed Target -->
-      <div class="stat-card tint-forest" title="Completed Targets">
+      <div class="stat-card tint-forest" id="completedTargetCard" role="button" tabindex="0" title="Click to view Completed Production Targets" aria-label="Completed Target: View Report">
         <div class="stat-icon bg-forest">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
